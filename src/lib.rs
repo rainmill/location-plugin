@@ -15,6 +15,12 @@ pub mod store;
 
 use laterite_core::{MigrationSet, Module, ModuleId, Registry};
 
+/// This plugin's entry point. Every Laterite plugin exposes `module()`, so the
+/// generated `plugins-manifest` collects it without naming the type.
+pub fn module() -> Box<dyn Module> {
+    Box::new(LocationModule)
+}
+
 /// The Rainmill Location plugin.
 pub struct LocationModule;
 
