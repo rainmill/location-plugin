@@ -8,13 +8,20 @@
 //!
 //! The migrations, query API, admin screens, and node-picker land incrementally.
 
-use laterite_core::{Module, ModuleId};
+pub mod migrations;
+mod schema;
+
+use laterite_core::{MigrationSet, Module, ModuleId};
 
 /// The Rainmill Location plugin.
 pub struct LocationModule;
 
 impl Module for LocationModule {
     fn id(&self) -> ModuleId {
-        ModuleId::new("rainmill.location")
+        ModuleId::new(migrations::MODULE_ID)
+    }
+
+    fn migrations(&self) -> MigrationSet {
+        migrations::migrations()
     }
 }

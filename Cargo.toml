@@ -10,3 +10,13 @@ repository = "https://github.com/lateritecmf/rainmill-location"
 # Laterite is unpublished and consumed by path in development (a Laterite
 # checkout sits beside this repo); the version is emitted when publishing.
 laterite-core = { path = "../laterite/crates/core", version = "0.2" }
+# The schema identifier enums use sea-query's `Iden` derive, whose generated code
+# references the `sea_query` crate directly. The framework re-exports the types
+# through `strata`, but the derive still needs the crate as a direct dependency.
+sea-query = { version = "0.32", features = ["derive"] }
+
+[dev-dependencies]
+# Tests run migrations against a real backend through the framework harness
+# (SQLite in-memory by default), so enable a driver and the test harness.
+laterite-core = { path = "../laterite/crates/core", features = ["sqlite", "postgres", "testing"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
