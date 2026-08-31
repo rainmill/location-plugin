@@ -8,11 +8,12 @@
 //!
 //! The migrations, query API, admin screens, and node-picker land incrementally.
 
+mod admin;
 pub mod migrations;
 mod schema;
 pub mod store;
 
-use laterite_core::{MigrationSet, Module, ModuleId};
+use laterite_core::{MigrationSet, Module, ModuleId, Registry};
 
 /// The Rainmill Location plugin.
 pub struct LocationModule;
@@ -24,5 +25,11 @@ impl Module for LocationModule {
 
     fn migrations(&self) -> MigrationSet {
         migrations::migrations()
+    }
+
+    fn register(&self, registry: &mut Registry) {
+        use laterite_admin::AdminRegistry;
+        registry.add_permission(admin::permission());
+        registry.add_resource(admin::resource());
     }
 }

@@ -10,6 +10,10 @@ repository = "https://github.com/rainmill/location-plugin"
 # Laterite is unpublished and consumed by path in development (a Laterite
 # checkout sits beside this repo); the version is emitted when publishing.
 laterite-core = { path = "../laterite/crates/core", version = "0.2" }
+# The admin descriptors (list/form screens) the module contributes from its
+# `register`. The place tree is the plugin's headless core; the admin screens are
+# its curation surface, rendered by the framework's generic handlers.
+laterite-admin = { path = "../laterite/crates/admin", version = "0.2" }
 # The schema identifier enums use sea-query's `Iden` derive, whose generated code
 # references the `sea_query` crate directly. The framework re-exports the types
 # through `strata`, but the derive still needs the crate as a direct dependency.
