@@ -1,0 +1,12 @@
+[package]
+name = "rainmill-location"
+version = "0.1.0"
+description = "Rainmill Location: a portable curated place tree with aliases and resolution, for Laterite"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/lateritecmf/rainmill-location"
+
+[dependencies]
+# Laterite is unpublished and consumed by path in development (a Laterite
+# checkout sits beside this repo); the version is emitted when publishing.
+laterite-core = { path = "../laterite/crates/core", version = "0.2" }
