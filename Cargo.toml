@@ -7,13 +7,17 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/rainmill/location-plugin"
 
 [dependencies]
-# Laterite is unpublished and consumed by path in development (a Laterite
-# checkout sits beside this repo); the version is emitted when publishing.
-laterite-core = { path = "../laterite/crates/core", version = "0.2" }
+# Laterite crates are version-only so this manifest is location-independent
+# (identical whether dev-symlinked under an app's plugins/ tree or vendored).
+# Laterite is unpublished, so the workspace that builds this plugin resolves these
+# to the local checkout through its root [patch.crates-io] (see the app Cargo.toml);
+# that patch vanishes once Laterite ships. Build/test this crate via that workspace
+# (`cargo test -p rainmill-location`) until Laterite publishes.
+laterite-core = "0.2"
 # The admin descriptors (list/form screens) the module contributes from its
 # `register`. The place tree is the plugin's headless core; the admin screens are
 # its curation surface, rendered by the framework's generic handlers.
-laterite-admin = { path = "../laterite/crates/admin", version = "0.2" }
+laterite-admin = "0.2"
 # The schema identifier enums use sea-query's `Iden` derive, whose generated code
 # references the `sea_query` crate directly. The framework re-exports the types
 # through `strata`, but the derive still needs the crate as a direct dependency.
@@ -30,5 +34,5 @@ slug = "0.1"
 [dev-dependencies]
 # Tests run migrations against a real backend through the framework harness
 # (SQLite in-memory by default), so enable a driver and the test harness.
-laterite-core = { path = "../laterite/crates/core", features = ["sqlite", "postgres", "testing"] }
+laterite-core = { version = "0.2", features = ["sqlite", "postgres", "testing"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
