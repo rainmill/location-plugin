@@ -10,6 +10,7 @@
 
 pub mod migrations;
 mod schema;
+pub mod store;
 
 use laterite_core::{MigrationSet, Module, ModuleId};
 

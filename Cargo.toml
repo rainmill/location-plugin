@@ -14,6 +14,14 @@ laterite-core = { path = "../laterite/crates/core", version = "0.2" }
 # references the `sea_query` crate directly. The framework re-exports the types
 # through `strata`, but the derive still needs the crate as a direct dependency.
 sea-query = { version = "0.32", features = ["derive"] }
+# Query execution goes through sqlx's portable `Any` layer, matching the framework.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "any"] }
+# Text timestamps (the framework stores times as ISO strings).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Alias normalization and slugs: use well-maintained crates, not hand-rolled string
+# munging. `deunicode` folds accents (Bengaluru/Bengalūru), `slug` makes URL slugs.
+deunicode = "1"
+slug = "0.1"
 
 [dev-dependencies]
 # Tests run migrations against a real backend through the framework harness
