@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Rainmill Location: a portable curated place tree with aliases and resolution, for Laterite"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/lateritecmf/rainmill-location"
+repository = "https://github.com/rainmill/location-plugin"
 
 [dependencies]
 # Laterite is unpublished and consumed by path in development (a Laterite

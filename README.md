@@ -9,7 +9,7 @@ maintained ancestor closure, name **aliases with search**, URL-friendly
 **slugs**, and resolution by id. It runs on **any database** and exposes each
 place as an **attach point** other modules reference by foreign key. Geospatial
 features (polygon boundaries, point-in-polygon, nearest-place) come from the
-companion [Rainmill Geo](https://github.com/lateritecmf/rainmill-geo) plugin.
+companion [Rainmill Geo](https://github.com/rainmill/geo-plugin) plugin.
 
 ## Requirements
 
