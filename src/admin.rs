@@ -17,7 +17,7 @@ use laterite_admin::picker::{PickerSourceReg, TableSource};
 use laterite_admin::{Permission, Resource};
 use laterite_core::strata::async_trait;
 use laterite_core::validation::ErrorBag;
-use laterite_core::Db;
+use laterite_core::{t, Db};
 
 use crate::store::{self, NewNode, NodeEdit};
 
@@ -153,7 +153,7 @@ impl Persister for NodePersister {
                     let mut bag = ErrorBag::default();
                     bag.add(
                         "parent_id",
-                        "Re-parenting a location is not supported here.",
+                        t!("Re-parenting a location is not supported here."),
                     );
                     return Err(SaveError::Invalid(bag));
                 }
