@@ -28,77 +28,110 @@ pub struct NewNode {
     pub centroid: Option<(f64, f64)>,
 }
 
-/// Creates a node and maintains its ancestor closure. Returns the new node id.
+/// Creates a node and maintains its ancestor closure, atomically. Returns the new
+/// node id. The node row and its closure rows land together or not at all.
 pub async fn create_node(db: &Db, new: NewNode) -> CoreResult<i64> {
+    let mut tx = db.pool.begin().await?;
+    let id = create_node_in(db.backend, &mut tx, new).await?;
+    tx.commit().await?;
+    Ok(id)
+}
+
+/// Creates a node and its closure rows on one connection, so `create_node` runs
+/// them in a single transaction. Reads the parent's ancestors on the same
+/// connection so the in-flight parentage is seen.
+async fn create_node_in(
+    backend: DbBackend,
+    conn: &mut sqlx::AnyConnection,
+    new: NewNode,
+) -> CoreResult<i64> {
     let now = chrono::Utc::now().to_rfc3339();
     let (lat, lng) = match new.centroid {
         Some((lat, lng)) => (Some(lat), Some(lng)),
         None => (None, None),
     };
-    let mut insert = Query::insert();
-    insert
-        .into_table(Node::Table)
-        .columns([
-            Node::ParentId,
-            Node::Level,
-            Node::CanonicalName,
-            Node::Slug,
-            Node::Timezone,
-            Node::CurrencyCode,
-            Node::Locale,
-            Node::CentroidLat,
-            Node::CentroidLng,
-            Node::CreatedAt,
-            Node::UpdatedAt,
-        ])
-        .values_panic([
-            new.parent_id.into(),
-            new.level.into(),
-            new.canonical_name.into(),
-            new.slug.into(),
-            new.timezone.unwrap_or_else(|| "UTC".to_string()).into(),
-            new.currency_code.into(),
-            new.locale.into(),
-            lat.into(),
-            lng.into(),
-            now.clone().into(),
-            now.into(),
-        ]);
-    let id = insert_returning_id(db, insert, Node::Id).await?;
+    let insert = {
+        let mut insert = Query::insert();
+        insert
+            .into_table(Node::Table)
+            .columns([
+                Node::ParentId,
+                Node::Level,
+                Node::CanonicalName,
+                Node::Slug,
+                Node::Timezone,
+                Node::CurrencyCode,
+                Node::Locale,
+                Node::CentroidLat,
+                Node::CentroidLng,
+                Node::CreatedAt,
+                Node::UpdatedAt,
+            ])
+            .values_panic([
+                new.parent_id.into(),
+                new.level.into(),
+                new.canonical_name.into(),
+                new.slug.into(),
+                new.timezone.unwrap_or_else(|| "UTC".to_string()).into(),
+                new.currency_code.into(),
+                new.locale.into(),
+                lat.into(),
+                lng.into(),
+                now.clone().into(),
+                now.into(),
+            ]);
+        insert.to_owned()
+    };
+    let id = insert_returning_id_on(backend, &mut *conn, insert, Node::Id).await?;
 
     // The closure: self at depth 0, then each parent ancestor at depth + 1. Depth
     // is a portable `integer` column, so its values bind as i32.
     let mut rows: Vec<(i64, i64, i32)> = vec![(id, id, 0)];
     if let Some(parent_id) = new.parent_id {
-        for (ancestor_id, depth) in ancestors_of(db, parent_id).await? {
+        for (ancestor_id, depth) in ancestors_of_in(backend, &mut *conn, parent_id).await? {
             rows.push((id, ancestor_id, (depth + 1) as i32));
         }
     }
-    let mut closure = Query::insert();
-    closure
-        .into_table(Anc::Table)
-        .columns([Anc::NodeId, Anc::AncestorId, Anc::Depth]);
-    for (node_id, ancestor_id, depth) in rows {
-        closure.values_panic([node_id.into(), ancestor_id.into(), depth.into()]);
-    }
-    let (sql, values) = build(db.backend, closure);
+    let (sql, values) = {
+        let mut closure = Query::insert();
+        closure
+            .into_table(Anc::Table)
+            .columns([Anc::NodeId, Anc::AncestorId, Anc::Depth]);
+        for (node_id, ancestor_id, depth) in rows {
+            closure.values_panic([node_id.into(), ancestor_id.into(), depth.into()]);
+        }
+        build(backend, closure)
+    };
     bind_values(sqlx::query(&sql), values)
-        .execute(&db.pool)
+        .execute(&mut *conn)
         .await?;
     Ok(id)
 }
 
 /// The `(ancestor_id, depth)` pairs for a node, nearest first.
 async fn ancestors_of(db: &Db, node_id: i64) -> CoreResult<Vec<(i64, i64)>> {
-    let mut select = Query::select();
-    select
-        .from(Anc::Table)
-        .columns([Anc::AncestorId, Anc::Depth])
-        .and_where(Expr::col(Anc::NodeId).eq(node_id))
-        .order_by(Anc::Depth, Order::Asc);
-    let (sql, values) = build(db.backend, select);
+    let mut conn = db.pool.acquire().await?;
+    ancestors_of_in(db.backend, &mut conn, node_id).await
+}
+
+/// [`ancestors_of`] on an existing connection, so a create in progress reads the
+/// closure rows it has just written.
+async fn ancestors_of_in(
+    backend: DbBackend,
+    conn: &mut sqlx::AnyConnection,
+    node_id: i64,
+) -> CoreResult<Vec<(i64, i64)>> {
+    let (sql, values) = {
+        let mut select = Query::select();
+        select
+            .from(Anc::Table)
+            .columns([Anc::AncestorId, Anc::Depth])
+            .and_where(Expr::col(Anc::NodeId).eq(node_id))
+            .order_by(Anc::Depth, Order::Asc);
+        build(backend, select)
+    };
     let rows = bind_values(sqlx::query(&sql), values)
-        .fetch_all(&db.pool)
+        .fetch_all(&mut *conn)
         .await?;
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
@@ -174,6 +207,64 @@ pub async fn find_by_alias(db: &Db, query: &str) -> CoreResult<Vec<i64>> {
     Ok(out)
 }
 
+/// The current parent of a node: `Some(parent)` (itself `Some` or `None`) when the
+/// node exists, or `None` when it does not. The admin write uses this to detect an
+/// attempted re-parenting.
+pub async fn parent_of(db: &Db, id: i64) -> CoreResult<Option<Option<i64>>> {
+    let (sql, values) = {
+        let mut select = Query::select();
+        select
+            .from(Node::Table)
+            .column(Node::ParentId)
+            .and_where(Expr::col(Node::Id).eq(id))
+            .limit(1);
+        build(db.backend, select)
+    };
+    let row = bind_values(sqlx::query(&sql), values)
+        .fetch_optional(&db.pool)
+        .await?;
+    Ok(row.map(|r| r.get_int_opt("parent_id").ok().flatten()))
+}
+
+/// The editable fields of a node: everything except its parentage and closure.
+#[derive(Debug, Clone)]
+pub struct NodeEdit {
+    pub level: String,
+    pub canonical_name: String,
+    pub slug: String,
+    pub timezone: Option<String>,
+    pub currency_code: Option<String>,
+    pub locale: Option<String>,
+}
+
+/// Updates a node's editable fields in place, bumping `updated_at`. Parentage and
+/// the ancestor closure are untouched (re-parenting is rejected by the caller), so
+/// this is a single portable statement.
+pub async fn update_node(db: &Db, id: i64, edit: NodeEdit) -> CoreResult<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let (sql, values) = {
+        let mut update = Query::update();
+        update
+            .table(Node::Table)
+            .value(Node::Level, edit.level)
+            .value(Node::CanonicalName, edit.canonical_name)
+            .value(Node::Slug, edit.slug)
+            .value(
+                Node::Timezone,
+                edit.timezone.unwrap_or_else(|| "UTC".to_string()),
+            )
+            .value(Node::CurrencyCode, edit.currency_code)
+            .value(Node::Locale, edit.locale)
+            .value(Node::UpdatedAt, now)
+            .and_where(Expr::col(Node::Id).eq(id));
+        build(db.backend, update)
+    };
+    bind_values(sqlx::query(&sql), values)
+        .execute(&db.pool)
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,5 +318,40 @@ mod tests {
         // Accent stripped and case folded on both sides.
         assert_eq!(find_by_alias(&db, "bengaluru").await.unwrap(), vec![id]);
         assert_eq!(find_by_alias(&db, "BANGA").await.unwrap(), vec![id]);
+    }
+
+    #[tokio::test]
+    async fn update_edits_fields_and_parent_of_reports_parentage() {
+        let (db, _g) = db().await;
+        let country = create_node(&db, node(None, "country", "India"))
+            .await
+            .unwrap();
+        let city = create_node(&db, node(Some(country), "city", "Bengaluru"))
+            .await
+            .unwrap();
+
+        // parent_of reports parentage: a root has none, a child has its parent, a
+        // missing node is None.
+        assert_eq!(parent_of(&db, country).await.unwrap(), Some(None));
+        assert_eq!(parent_of(&db, city).await.unwrap(), Some(Some(country)));
+        assert_eq!(parent_of(&db, 99999).await.unwrap(), None);
+
+        // update_node changes editable fields, leaving parentage and closure intact.
+        update_node(
+            &db,
+            city,
+            NodeEdit {
+                level: "city".to_string(),
+                canonical_name: "Bengaluru (Bangalore)".to_string(),
+                slug: "bengaluru".to_string(),
+                timezone: Some("Asia/Kolkata".to_string()),
+                currency_code: Some("INR".to_string()),
+                locale: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(parent_of(&db, city).await.unwrap(), Some(Some(country)));
+        assert_eq!(ancestors(&db, city).await.unwrap(), vec![city, country]);
     }
 }

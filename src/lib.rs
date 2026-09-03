@@ -37,5 +37,7 @@ impl Module for LocationModule {
         use laterite_admin::AdminRegistry;
         registry.add_permission(admin::permission());
         registry.add_resource(admin::resource());
+        registry.add_persister(admin::persister());
+        registry.add_picker_source(admin::picker_source());
     }
 }
