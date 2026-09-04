@@ -34,8 +34,8 @@ const NODE_KEY: &str = "rainmill.location.node";
 pub(crate) fn permission() -> Permission {
     Permission {
         code: MANAGE.to_string(),
-        label: "Manage locations".to_string(),
-        group: "Location".to_string(),
+        label: "Manage locations".into(),
+        group: "Location".into(),
     }
 }
 
