@@ -43,7 +43,7 @@ pub(crate) fn permission() -> Permission {
 pub(crate) fn resource() -> Resource {
     Resource {
         base_path: "/locations".to_string(),
-        nav_label: "Locations".to_string(),
+        nav_label: "Locations".into(),
         list: node_list_config(),
         form: Some(node_form_config()),
         permission: Some(MANAGE.to_string()),
@@ -70,7 +70,7 @@ pub(crate) fn picker_source() -> PickerSourceReg {
 fn node_list_config() -> ListConfig {
     ListConfig {
         entity: NODE_ENTITY.to_string(),
-        title: "Locations".to_string(),
+        title: "Locations".into(),
         columns: vec![
             ListColumn::new("canonical_name", "Name"),
             ListColumn::new("level", "Level"),
@@ -93,7 +93,7 @@ fn node_list_config() -> ListConfig {
 fn node_form_config() -> FormConfig {
     FormConfig {
         entity: NODE_ENTITY.to_string(),
-        title: "Location".to_string(),
+        title: "Location".into(),
         base_path: "/locations".to_string(),
         id_field: "id".to_string(),
         persist: Some(NODE_KEY.to_string()),
