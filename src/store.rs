@@ -40,7 +40,7 @@ pub async fn create_node(db: &Db, new: NewNode) -> CoreResult<i64> {
 /// Creates a node and its closure rows on one connection, so `create_node` runs
 /// them in a single transaction. Reads the parent's ancestors on the same
 /// connection so the in-flight parentage is seen.
-async fn create_node_in(
+pub async fn create_node_in(
     backend: DbBackend,
     conn: &mut sqlx::AnyConnection,
     new: NewNode,
@@ -211,6 +211,17 @@ pub async fn find_by_alias(db: &Db, query: &str) -> CoreResult<Vec<i64>> {
 /// node exists, or `None` when it does not. The admin write uses this to detect an
 /// attempted re-parenting.
 pub async fn parent_of(db: &Db, id: i64) -> CoreResult<Option<Option<i64>>> {
+    let mut conn = db.pool.acquire().await?;
+    parent_of_in(db.backend, &mut conn, id).await
+}
+
+/// [`parent_of`] on an explicit connection, so a write running in a transaction
+/// sees its own in-flight state.
+pub async fn parent_of_in(
+    backend: DbBackend,
+    conn: &mut sqlx::AnyConnection,
+    id: i64,
+) -> CoreResult<Option<Option<i64>>> {
     let (sql, values) = {
         let mut select = Query::select();
         select
@@ -218,10 +229,10 @@ pub async fn parent_of(db: &Db, id: i64) -> CoreResult<Option<Option<i64>>> {
             .column(Node::ParentId)
             .and_where(Expr::col(Node::Id).eq(id))
             .limit(1);
-        build(db.backend, select)
+        build(backend, select)
     };
     let row = bind_values(sqlx::query(&sql), values)
-        .fetch_optional(&db.pool)
+        .fetch_optional(&mut *conn)
         .await?;
     Ok(row.map(|r| r.get_int_opt("parent_id").ok().flatten()))
 }
@@ -241,6 +252,18 @@ pub struct NodeEdit {
 /// the ancestor closure are untouched (re-parenting is rejected by the caller), so
 /// this is a single portable statement.
 pub async fn update_node(db: &Db, id: i64, edit: NodeEdit) -> CoreResult<()> {
+    let mut conn = db.pool.acquire().await?;
+    update_node_in(db.backend, &mut conn, id, edit).await
+}
+
+/// [`update_node`] on an explicit connection, so the admin write joins the
+/// pipeline's transaction rather than opening its own.
+pub async fn update_node_in(
+    backend: DbBackend,
+    conn: &mut sqlx::AnyConnection,
+    id: i64,
+    edit: NodeEdit,
+) -> CoreResult<()> {
     let now = chrono::Utc::now().to_rfc3339();
     let (sql, values) = {
         let mut update = Query::update();
@@ -257,10 +280,10 @@ pub async fn update_node(db: &Db, id: i64, edit: NodeEdit) -> CoreResult<()> {
             .value(Node::Locale, edit.locale)
             .value(Node::UpdatedAt, now)
             .and_where(Expr::col(Node::Id).eq(id));
-        build(db.backend, update)
+        build(backend, update)
     };
     bind_values(sqlx::query(&sql), values)
-        .execute(&db.pool)
+        .execute(&mut *conn)
         .await?;
     Ok(())
 }

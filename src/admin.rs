@@ -17,7 +17,7 @@ use laterite_admin::picker::{PickerSourceReg, TableSource};
 use laterite_admin::{Permission, Resource};
 use laterite_core::strata::async_trait;
 use laterite_core::validation::ErrorBag;
-use laterite_core::{t, Db, Record};
+use laterite_core::{t, Record, SaveCx};
 
 use crate::store::{self, NewNode, NodeEdit};
 
@@ -116,7 +116,7 @@ struct NodePersister;
 
 #[async_trait]
 impl Persister for NodePersister {
-    async fn create(&self, db: &Db, rec: &Record) -> Result<i64, SaveError> {
+    async fn create(&self, cx: &mut SaveCx<'_>, rec: &Record) -> Result<i64, SaveError> {
         // The helpers below read the submission as text; the record's own typed
         // values arrive with the field-type save contract.
         let data = &rec.to_text_map();
@@ -130,19 +130,23 @@ impl Persister for NodePersister {
             locale: opt(data, "locale"),
             centroid: None,
         };
-        store::create_node(db, new)
+        // Writes on the pipeline's transaction, so the node row and its closure
+        // commit with the rest of the save or not at all.
+        let backend = cx.backend();
+        store::create_node_in(backend, cx.conn(), new)
             .await
             .map_err(|e| SaveError::Failed(e.to_string()))
     }
 
-    async fn update(&self, db: &Db, id: &str, rec: &Record) -> Result<(), SaveError> {
+    async fn update(&self, cx: &mut SaveCx<'_>, id: &str, rec: &Record) -> Result<(), SaveError> {
         let data = &rec.to_text_map();
+        let backend = cx.backend();
         let node_id: i64 = id
             .parse()
             .map_err(|_| SaveError::Failed("invalid node id".to_string()))?;
         // Re-parenting would move a whole subtree and rebuild its closure, which
         // this write does not do: a changed parent is a per-field rejection.
-        match store::parent_of(db, node_id)
+        match store::parent_of_in(backend, cx.conn(), node_id)
             .await
             .map_err(|e| SaveError::Failed(e.to_string()))?
         {
@@ -166,7 +170,7 @@ impl Persister for NodePersister {
             currency_code: opt(data, "currency_code"),
             locale: opt(data, "locale"),
         };
-        store::update_node(db, node_id, edit)
+        store::update_node_in(backend, cx.conn(), node_id, edit)
             .await
             .map_err(|e| SaveError::Failed(e.to_string()))
     }
@@ -194,6 +198,7 @@ fn opt_i64(data: &HashMap<String, String>, key: &str) -> Option<i64> {
 mod tests {
     use super::*;
     use laterite_core::testing::connect_test;
+    use laterite_core::Db;
     use laterite_core::{Module, Registry};
 
     #[test]
@@ -239,11 +244,35 @@ mod tests {
         }
     }
 
-    fn form_data(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-        pairs
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect()
+    fn record(pairs: &[(&str, &str)]) -> Record {
+        let mut rec = Record::new("rainmill_location_nodes");
+        for (key, value) in pairs {
+            rec.set(*key, *value);
+        }
+        rec
+    }
+
+    /// Runs a create the way the pipeline does: on one transaction, committed.
+    async fn create(db: &Db, rec: &Record) -> Result<i64, SaveError> {
+        let mut tx = db.pool.begin().await.unwrap();
+        let out = {
+            let mut cx = SaveCx::new(db.backend, &mut tx);
+            NodePersister.create(&mut cx, rec).await
+        };
+        tx.commit().await.unwrap();
+        out
+    }
+
+    /// The update counterpart. Commits so a following read sees the write; a
+    /// rejected update leaves nothing behind either way.
+    async fn update(db: &Db, id: &str, rec: &Record) -> Result<(), SaveError> {
+        let mut tx = db.pool.begin().await.unwrap();
+        let out = {
+            let mut cx = SaveCx::new(db.backend, &mut tx);
+            NodePersister.update(&mut cx, id, rec).await
+        };
+        tx.commit().await.unwrap();
+        out
     }
 
     #[tokio::test]
@@ -260,26 +289,23 @@ mod tests {
             .unwrap();
 
         // Moving the city under a different parent is rejected with a field error.
-        let moved = form_data(&[
+        let moved = record(&[
             ("canonical_name", "Bengaluru"),
             ("slug", "bengaluru"),
             ("level", "city"),
             ("parent_id", &usa.to_string()),
         ]);
-        let err = NodePersister
-            .update(&db, &city.to_string(), &moved)
-            .await
-            .unwrap_err();
+        let err = update(&db, &city.to_string(), &moved).await.unwrap_err();
         assert!(matches!(err, SaveError::Invalid(_)));
 
         // Editing fields while keeping the same parent succeeds.
-        let renamed = form_data(&[
+        let renamed = record(&[
             ("canonical_name", "Bengaluru (Bangalore)"),
             ("slug", "bengaluru"),
             ("level", "city"),
             ("parent_id", &india.to_string()),
         ]);
-        let Ok(()) = NodePersister.update(&db, &city.to_string(), &renamed).await else {
+        let Ok(()) = update(&db, &city.to_string(), &renamed).await else {
             panic!("editing without re-parenting should succeed");
         };
         // Parentage and closure survive the edit.
@@ -292,30 +318,28 @@ mod tests {
     #[tokio::test]
     async fn node_persister_creates_a_root_and_a_child() {
         let (db, _g) = connect_test(&[crate::migrations::migrations()]).await;
-        let Ok(root) = NodePersister
-            .create(
-                &db,
-                &form_data(&[
-                    ("canonical_name", "India"),
-                    ("slug", "india"),
-                    ("level", "country"),
-                ]),
-            )
-            .await
+        let Ok(root) = create(
+            &db,
+            &record(&[
+                ("canonical_name", "India"),
+                ("slug", "india"),
+                ("level", "country"),
+            ]),
+        )
+        .await
         else {
             panic!("creating a root should succeed");
         };
-        let Ok(child) = NodePersister
-            .create(
-                &db,
-                &form_data(&[
-                    ("canonical_name", "Karnataka"),
-                    ("slug", "karnataka"),
-                    ("level", "state"),
-                    ("parent_id", &root.to_string()),
-                ]),
-            )
-            .await
+        let Ok(child) = create(
+            &db,
+            &record(&[
+                ("canonical_name", "Karnataka"),
+                ("slug", "karnataka"),
+                ("level", "state"),
+                ("parent_id", &root.to_string()),
+            ]),
+        )
+        .await
         else {
             panic!("creating a child should succeed");
         };
