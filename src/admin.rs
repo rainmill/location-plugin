@@ -84,6 +84,9 @@ fn node_list_config() -> ListConfig {
         id_field: "id".to_string(),
         edit_base: Some("/locations".to_string()),
         creatable: true,
+        // No filters yet: `level` and `status` are the natural ones, but their
+        // value sets are not declared anywhere here yet.
+        filters: Vec::new(),
     }
 }
 
