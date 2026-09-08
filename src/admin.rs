@@ -198,7 +198,7 @@ fn opt_i64(data: &HashMap<String, String>, key: &str) -> Option<i64> {
 mod tests {
     use super::*;
     use laterite_core::testing::connect_test;
-    use laterite_core::Db;
+    use laterite_core::{Actor, Db};
     use laterite_core::{Module, Registry};
 
     #[test]
@@ -256,7 +256,7 @@ mod tests {
     async fn create(db: &Db, rec: &Record) -> Result<i64, SaveError> {
         let mut tx = db.pool.begin().await.unwrap();
         let out = {
-            let mut cx = SaveCx::new(db.backend, &mut tx);
+            let mut cx = SaveCx::new(db.backend, &mut tx, Actor::system("test"));
             NodePersister.create(&mut cx, rec).await
         };
         tx.commit().await.unwrap();
@@ -268,7 +268,7 @@ mod tests {
     async fn update(db: &Db, id: &str, rec: &Record) -> Result<(), SaveError> {
         let mut tx = db.pool.begin().await.unwrap();
         let out = {
-            let mut cx = SaveCx::new(db.backend, &mut tx);
+            let mut cx = SaveCx::new(db.backend, &mut tx, Actor::system("test"));
             NodePersister.update(&mut cx, id, rec).await
         };
         tx.commit().await.unwrap();
