@@ -17,7 +17,7 @@ use laterite_admin::picker::{PickerSourceReg, TableSource};
 use laterite_admin::{Permission, Resource};
 use laterite_core::strata::async_trait;
 use laterite_core::validation::ErrorBag;
-use laterite_core::{t, Db};
+use laterite_core::{t, Db, Record};
 
 use crate::store::{self, NewNode, NodeEdit};
 
@@ -116,7 +116,10 @@ struct NodePersister;
 
 #[async_trait]
 impl Persister for NodePersister {
-    async fn create(&self, db: &Db, data: &HashMap<String, String>) -> Result<i64, SaveError> {
+    async fn create(&self, db: &Db, rec: &Record) -> Result<i64, SaveError> {
+        // The helpers below read the submission as text; the record's own typed
+        // values arrive with the field-type save contract.
+        let data = &rec.to_text_map();
         let new = NewNode {
             parent_id: opt_i64(data, "parent_id"),
             level: req(data, "level"),
@@ -132,12 +135,8 @@ impl Persister for NodePersister {
             .map_err(|e| SaveError::Failed(e.to_string()))
     }
 
-    async fn update(
-        &self,
-        db: &Db,
-        id: &str,
-        data: &HashMap<String, String>,
-    ) -> Result<(), SaveError> {
+    async fn update(&self, db: &Db, id: &str, rec: &Record) -> Result<(), SaveError> {
+        let data = &rec.to_text_map();
         let node_id: i64 = id
             .parse()
             .map_err(|_| SaveError::Failed("invalid node id".to_string()))?;
