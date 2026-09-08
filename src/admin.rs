@@ -106,6 +106,8 @@ fn node_form_config() -> FormConfig {
             FormField::text("currency_code", "Currency"),
             FormField::text("locale", "Locale"),
         ],
+        // The node persister stamps its own timestamps inside the closure write.
+        timestamps: false,
     }
 }
 
