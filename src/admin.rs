@@ -87,6 +87,9 @@ fn node_list_config() -> ListConfig {
         // No filters yet: `level` and `status` are the natural ones, but their
         // value sets are not declared anywhere here yet.
         filters: Vec::new(),
+        // Nodes form a hierarchy, so removing one has to say what happens to its
+        // children before this can be turned on.
+        deletable: false,
     }
 }
 
