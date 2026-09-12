@@ -88,8 +88,10 @@ fn node_list_config() -> ListConfig {
         // value sets are not declared anywhere here yet.
         filters: Vec::new(),
         // Nodes form a hierarchy, so removing one has to say what happens to its
-        // children before this can be turned on.
+        // children before this can be turned on. Stated rather than left to the
+        // default, so it stays a decision if that default ever changes.
         deletable: false,
+        ..Default::default()
     }
 }
 
