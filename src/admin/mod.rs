@@ -1,203 +1,27 @@
-//! The plugin's admin surface: a list and a create/edit form for curating place
-//! nodes, plus the write and picker services they need.
+//! This plugin's admin surface.
 //!
-//! Contributed through the module's `register`, so the framework's generic
-//! handlers render the screens from these descriptors rather than any hand-written
-//! CRUD. A node write maintains the ancestor closure (see [`store::create_node`]),
-//! which the generic form cannot do, so the form names a [`NodePersister`]. The
-//! parent field is a reference picker over the node table itself.
+//! One module per resource, as `lat make:resource` lays it out, with the code
+//! seams beside them.
 
-use std::collections::HashMap;
-use std::sync::Arc;
+pub(crate) mod node;
+mod persist;
 
-use laterite_admin::form::{FormConfig, FormField};
-use laterite_admin::list::{ListColumn, ListConfig, SortDir};
-use laterite_admin::persist::{Persister, PersisterReg, SaveError};
-use laterite_admin::picker::{PickerSourceReg, TableSource};
-use laterite_admin::{Permission, Resource};
-use laterite_core::strata::async_trait;
-use laterite_core::validation::ErrorBag;
-use laterite_core::{t, Record, SaveCx};
-
-use crate::store::{self, NewNode, NodeEdit};
-
-/// The permission gating the location screens, offered in the role editor.
-pub(crate) const MANAGE: &str = "rainmill.location.manage";
-
-/// The node table, shared by the descriptors, the persister, and the picker.
-const NODE_ENTITY: &str = "rainmill_location_node";
-/// The registry key of the node write handler and of the node picker source (they
-/// live in separate registries, so one dotted name serves both).
-const NODE_KEY: &str = "rainmill.location.node";
-
-/// The permission the plugin registers.
-pub(crate) fn permission() -> Permission {
-    Permission {
-        code: MANAGE.to_string(),
-        label: "Manage locations".into(),
-        group: "Location".into(),
-    }
-}
-
-/// The place-node resource: a list plus a create/edit form, gated by [`MANAGE`].
-pub(crate) fn resource() -> Resource {
-    Resource::new("/locations", "Locations", node_list_config())
-        .form(node_form_config())
-        .permission(MANAGE)
-}
-
-/// The node write handler, registered under [`NODE_KEY`].
-pub(crate) fn persister() -> PersisterReg {
-    PersisterReg::new(NODE_KEY, Arc::new(NodePersister))
-}
-
-/// The node picker source: the built-in single-table source over the node table,
-/// matching on name and hinting each node's level. Gated on [`MANAGE`], the same
-/// permission as the screens that use it.
-pub(crate) fn picker_source() -> PickerSourceReg {
-    PickerSourceReg::new(
-        NODE_KEY,
-        Arc::new(TableSource::new(NODE_ENTITY, "id", "canonical_name").with_hint("level")),
-    )
-    .require(MANAGE)
-}
-
-/// The list view over the place-node table: name, level, slug, status, created.
-fn node_list_config() -> ListConfig {
-    // No filters yet: `level` and `status` are the natural ones, but their value
-    // sets are not declared anywhere here yet. And no `.deletable()`: nodes form
-    // a hierarchy, so removing one has to say what happens to its children first.
-    ListConfig::new(
-        NODE_ENTITY,
-        "Locations",
-        vec![
-            ListColumn::new("canonical_name", "Name"),
-            ListColumn::new("level", "Level"),
-            ListColumn::new("slug", "Slug"),
-            ListColumn::new("status", "Status"),
-            ListColumn::new("created_at", "Created").datetime(),
-        ],
-    )
-    .order("canonical_name", SortDir::Asc)
-    .edit_base("/locations")
-    .creatable()
-}
-
-/// The create/edit form. The parent field is a reference picker over the node
-/// table (a node's parent is another node); the [`NodePersister`] rejects a
-/// changed parent on edit, so re-parenting is not offered as an ordinary edit.
-fn node_form_config() -> FormConfig {
-    // No `.timestamps()`: the node persister stamps its own inside the closure
-    // write.
-    FormConfig::new(
-        NODE_ENTITY,
-        "Location",
-        "/locations",
-        "id",
-        vec![
-            FormField::text("canonical_name", "Name").required(),
-            FormField::text("slug", "Slug").required().unique(),
-            FormField::text("level", "Level").required(),
-            FormField::reference("parent_id", "Parent", NODE_KEY),
-            FormField::text("timezone", "Timezone"),
-            FormField::text("currency_code", "Currency"),
-            FormField::text("locale", "Locale"),
-        ],
-    )
-    .persist(NODE_KEY)
-}
-
-/// The location node write handler. Create maintains the ancestor closure
-/// atomically (see [`store::create_node`]); update edits a node's fields but
-/// rejects re-parenting, which would require rebuilding the subtree's closure.
-struct NodePersister;
-
-#[async_trait]
-impl Persister for NodePersister {
-    async fn create(&self, cx: &mut SaveCx<'_>, rec: &Record) -> Result<i64, SaveError> {
-        // The helpers below read the submission as text; the record's own typed
-        // values arrive with the field-type save contract.
-        let data = &rec.to_text_map();
-        let new = NewNode {
-            parent_id: opt_i64(data, "parent_id"),
-            level: req(data, "level"),
-            canonical_name: req(data, "canonical_name"),
-            slug: req(data, "slug"),
-            timezone: opt(data, "timezone"),
-            currency_code: opt(data, "currency_code"),
-            locale: opt(data, "locale"),
-            centroid: None,
-        };
-        // Writes on the pipeline's transaction, so the node row and its closure
-        // commit with the rest of the save or not at all.
-        let backend = cx.backend();
-        store::create_node_in(backend, cx.conn(), new)
-            .await
-            .map_err(|e| SaveError::Failed(e.to_string()))
-    }
-
-    async fn update(&self, cx: &mut SaveCx<'_>, id: &str, rec: &Record) -> Result<(), SaveError> {
-        let data = &rec.to_text_map();
-        let backend = cx.backend();
-        let node_id: i64 = id
-            .parse()
-            .map_err(|_| SaveError::Failed("invalid node id".to_string()))?;
-        // Re-parenting would move a whole subtree and rebuild its closure, which
-        // this write does not do: a changed parent is a per-field rejection.
-        match store::parent_of_in(backend, cx.conn(), node_id)
-            .await
-            .map_err(|e| SaveError::Failed(e.to_string()))?
-        {
-            None => return Err(SaveError::Failed("location not found".to_string())),
-            Some(current_parent) => {
-                if opt_i64(data, "parent_id") != current_parent {
-                    let mut bag = ErrorBag::default();
-                    bag.add(
-                        "parent_id",
-                        t!("Re-parenting a location is not supported here."),
-                    );
-                    return Err(SaveError::Invalid(bag));
-                }
-            }
-        }
-        let edit = NodeEdit {
-            level: req(data, "level"),
-            canonical_name: req(data, "canonical_name"),
-            slug: req(data, "slug"),
-            timezone: opt(data, "timezone"),
-            currency_code: opt(data, "currency_code"),
-            locale: opt(data, "locale"),
-        };
-        store::update_node_in(backend, cx.conn(), node_id, edit)
-            .await
-            .map_err(|e| SaveError::Failed(e.to_string()))
-    }
-}
-
-/// A trimmed, non-empty submission value, or None.
-fn opt(data: &HashMap<String, String>, key: &str) -> Option<String> {
-    data.get(key)
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-}
-
-/// A required value: the form's rules have already ensured it is present.
-fn req(data: &HashMap<String, String>, key: &str) -> String {
-    opt(data, key).unwrap_or_default()
-}
-
-/// A submission value parsed as an id, or None when absent or unparsable.
-fn opt_i64(data: &HashMap<String, String>, key: &str) -> Option<i64> {
-    opt(data, key).and_then(|s| s.parse().ok())
-}
+pub(crate) use node::{permission, picker_source, resource};
+pub(crate) use persist::persister;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::admin::node::{MANAGE, NODE_ENTITY, NODE_KEY};
+    use crate::admin::persist::NodePersister;
+    use crate::store::{self, NewNode};
+    use laterite_admin::persist::PersisterReg;
+    use laterite_admin::persist::{Persister, SaveError};
+    use laterite_admin::picker::PickerSourceReg;
+    use laterite_admin::{Permission, Resource};
     use laterite_core::testing::connect_test;
     use laterite_core::{Actor, Db};
     use laterite_core::{Module, Registry};
+    use laterite_core::{Record, SaveCx};
 
     #[test]
     fn register_contributes_the_resource_permission_persister_and_picker() {
