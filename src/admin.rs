@@ -41,13 +41,9 @@ pub(crate) fn permission() -> Permission {
 
 /// The place-node resource: a list plus a create/edit form, gated by [`MANAGE`].
 pub(crate) fn resource() -> Resource {
-    Resource {
-        base_path: "/locations".to_string(),
-        nav_label: "Locations".into(),
-        list: node_list_config(),
-        form: Some(node_form_config()),
-        permission: Some(MANAGE.to_string()),
-    }
+    Resource::new("/locations", "Locations", node_list_config())
+        .form(node_form_config())
+        .permission(MANAGE)
 }
 
 /// The node write handler, registered under [`NODE_KEY`].
@@ -68,44 +64,37 @@ pub(crate) fn picker_source() -> PickerSourceReg {
 
 /// The list view over the place-node table: name, level, slug, status, created.
 fn node_list_config() -> ListConfig {
-    ListConfig {
-        entity: NODE_ENTITY.to_string(),
-        title: "Locations".into(),
-        columns: vec![
+    // No filters yet: `level` and `status` are the natural ones, but their value
+    // sets are not declared anywhere here yet. And no `.deletable()`: nodes form
+    // a hierarchy, so removing one has to say what happens to its children first.
+    ListConfig::new(
+        NODE_ENTITY,
+        "Locations",
+        vec![
             ListColumn::new("canonical_name", "Name"),
             ListColumn::new("level", "Level"),
             ListColumn::new("slug", "Slug"),
             ListColumn::new("status", "Status"),
             ListColumn::new("created_at", "Created").datetime(),
         ],
-        order_by: "canonical_name".to_string(),
-        order_dir: SortDir::Asc,
-        per_page: 25,
-        id_field: "id".to_string(),
-        edit_base: Some("/locations".to_string()),
-        creatable: true,
-        // No filters yet: `level` and `status` are the natural ones, but their
-        // value sets are not declared anywhere here yet.
-        filters: Vec::new(),
-        // Nodes form a hierarchy, so removing one has to say what happens to its
-        // children before this can be turned on. Stated rather than left to the
-        // default, so it stays a decision if that default ever changes.
-        deletable: false,
-        ..Default::default()
-    }
+    )
+    .order("canonical_name", SortDir::Asc)
+    .edit_base("/locations")
+    .creatable()
 }
 
 /// The create/edit form. The parent field is a reference picker over the node
 /// table (a node's parent is another node); the [`NodePersister`] rejects a
 /// changed parent on edit, so re-parenting is not offered as an ordinary edit.
 fn node_form_config() -> FormConfig {
-    FormConfig {
-        entity: NODE_ENTITY.to_string(),
-        title: "Location".into(),
-        base_path: "/locations".to_string(),
-        id_field: "id".to_string(),
-        persist: Some(NODE_KEY.to_string()),
-        fields: vec![
+    // No `.timestamps()`: the node persister stamps its own inside the closure
+    // write.
+    FormConfig::new(
+        NODE_ENTITY,
+        "Location",
+        "/locations",
+        "id",
+        vec![
             FormField::text("canonical_name", "Name").required(),
             FormField::text("slug", "Slug").required().unique(),
             FormField::text("level", "Level").required(),
@@ -114,9 +103,8 @@ fn node_form_config() -> FormConfig {
             FormField::text("currency_code", "Currency"),
             FormField::text("locale", "Locale"),
         ],
-        // The node persister stamps its own timestamps inside the closure write.
-        timestamps: false,
-    }
+    )
+    .persist(NODE_KEY)
 }
 
 /// The location node write handler. Create maintains the ancestor closure
