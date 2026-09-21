@@ -25,11 +25,8 @@ pub(crate) const NODE_KEY: &str = "rainmill.location.node";
 
 /// The permission the plugin registers.
 pub(crate) fn permission() -> Permission {
-    Permission {
-        code: MANAGE.to_string(),
-        label: "Manage locations".into(),
-        group: "Location".into(),
-    }
+    Permission::new(MANAGE, "Manage locations", "Location")
+        .roles([laterite_admin::ROLE_ADMIN, laterite_admin::ROLE_EDITOR])
 }
 
 /// The place-node resource: a list plus a create/edit form, gated by [`MANAGE`].
