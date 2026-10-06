@@ -19,11 +19,11 @@ plugin = "rainmill.location"
 # to the local checkout through its root [patch.crates-io] (see the app Cargo.toml);
 # that patch vanishes once Laterite ships. Build/test this crate via that workspace
 # (`cargo test -p rainmill-location`) until Laterite publishes.
-laterite-core = "0.7"
+laterite-core = "0.9"
 # The admin descriptors (list/form screens) the module contributes from its
 # `register`. The place tree is the plugin's headless core; the admin screens are
 # its curation surface, rendered by the framework's generic handlers.
-laterite-admin = "0.7"
+laterite-admin = "0.9"
 # The schema identifier enums use sea-query's `Iden` derive, whose generated code
 # references the `sea_query` crate directly. The framework re-exports the types
 # through `strata`, but the derive still needs the crate as a direct dependency.
@@ -40,5 +40,5 @@ slug = "0.1"
 [dev-dependencies]
 # Tests run migrations against a real backend through the framework harness
 # (SQLite in-memory by default), so enable a driver and the test harness.
-laterite-core = { version = "0.7", features = ["sqlite", "postgres", "testing"] }
+laterite-core = { version = "0.9", features = ["sqlite", "postgres", "testing"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

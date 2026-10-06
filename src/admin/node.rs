@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use laterite_admin::form::{FormConfig, FormField};
+use laterite_admin::ImportConfig;
 use laterite_admin::list::{ListColumn, ListConfig, SortDir};
 use laterite_admin::picker::{PickerSourceReg, TableSource};
 use laterite_admin::{Permission, Resource};
@@ -34,6 +35,7 @@ pub(crate) fn resource() -> Resource {
     Resource::new("/locations", "Locations", node_list_config())
         .form(node_form_config())
         .permission(MANAGE)
+        .import(ImportConfig::new())
 }
 
 /// The node picker source: the built-in single-table source over the node table,
