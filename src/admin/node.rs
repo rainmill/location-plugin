@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use laterite_admin::form::{FormConfig, FormField};
+use laterite_admin::relation::RelationConfig;
 use laterite_admin::ImportConfig;
 use laterite_admin::list::{ListColumn, ListConfig, SortDir};
 use laterite_admin::picker::{PickerSourceReg, TableSource};
@@ -36,6 +37,19 @@ pub(crate) fn resource() -> Resource {
         .form(node_form_config())
         .permission(MANAGE)
         .import(ImportConfig::new())
+        // A node's children on its own edit page: the same list and form, scoped
+        // by the parent column the persister already maintains the closure for.
+        .relation(
+            RelationConfig::has_many(
+                "children",
+                "Child location",
+                NODE_ENTITY,
+                "parent_id",
+                node_list_config(),
+                node_form_config(),
+            )
+            .title("Child locations"),
+        )
 }
 
 /// The node picker source: the built-in single-table source over the node table,
