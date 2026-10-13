@@ -72,7 +72,7 @@ fn node_list_config() -> ListConfig {
         NODE_ENTITY,
         "Locations",
         vec![
-            ListColumn::new("canonical_name", "Name"),
+            ListColumn::new("canonical_name", "Name").editable(),
             ListColumn::new("level", "Level"),
             ListColumn::new("slug", "Slug"),
             ListColumn::new("status", "Status"),
