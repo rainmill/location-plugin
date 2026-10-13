@@ -36,6 +36,7 @@ pub(crate) fn permission() -> Permission {
 pub(crate) fn resource() -> Resource {
     Resource::new("/locations", "Locations", node_list_config())
         .menu(Placement::new().icon("map-pin"))
+        .palette(NODE_KEY)
         .form(node_form_config())
         .permission(MANAGE)
         .import(ImportConfig::new())
