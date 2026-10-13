@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use laterite_admin::form::{FormConfig, FormField};
+use laterite_admin::nav::Placement;
 use laterite_admin::relation::RelationConfig;
 use laterite_admin::ImportConfig;
 use laterite_admin::list::{TreeConfig, ListColumn, ListConfig, SortDir};
@@ -34,6 +35,7 @@ pub(crate) fn permission() -> Permission {
 /// The place-node resource: a list plus a create/edit form, gated by [`MANAGE`].
 pub(crate) fn resource() -> Resource {
     Resource::new("/locations", "Locations", node_list_config())
+        .menu(Placement::new().icon("map-pin"))
         .form(node_form_config())
         .permission(MANAGE)
         .import(ImportConfig::new())
