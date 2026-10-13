@@ -12,7 +12,7 @@ use std::sync::Arc;
 use laterite_admin::form::{FormConfig, FormField};
 use laterite_admin::relation::RelationConfig;
 use laterite_admin::ImportConfig;
-use laterite_admin::list::{ListColumn, ListConfig, SortDir};
+use laterite_admin::list::{TreeConfig, ListColumn, ListConfig, SortDir};
 use laterite_admin::picker::{PickerSourceReg, TableSource};
 use laterite_admin::{Permission, Resource};
 
@@ -82,6 +82,7 @@ fn node_list_config() -> ListConfig {
     .order("canonical_name", SortDir::Asc)
     .edit_base("/locations")
     .creatable()
+    .tree(TreeConfig::new("parent_id").move_to(NODE_KEY))
 }
 
 /// The create/edit form. The parent field is a reference picker over the node

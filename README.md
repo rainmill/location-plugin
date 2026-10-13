@@ -46,7 +46,9 @@ The plugin manages a tree of place **nodes** and offers:
 
 - **Tree curation**: create nodes at any depth with a level label
   (`country`, `city`, `zone`, ...), a canonical name, a slug, and a portable
-  centroid (latitude/longitude).
+  centroid (latitude/longitude). The admin lists places as a tree, and "Move
+  to" puts a place and everything beneath it under another parent, with the
+  closure rebuilt in the same transaction.
 - **Aliases**: multiple names per place (`Bengaluru`, `Bangalore`) that resolve to
   one node; searchable by exact and prefix match, and fuzzy where the database
   supports it.

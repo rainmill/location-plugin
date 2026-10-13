@@ -288,6 +288,105 @@ pub async fn update_node_in(
     Ok(())
 }
 
+/// Puts a node under another parent (none for the top level), rebuilding the
+/// closure of its whole subtree. Refuses a parent inside that subtree, which
+/// would close a loop.
+pub async fn move_node(db: &Db, id: i64, parent: Option<i64>) -> CoreResult<()> {
+    let mut tx = db.pool.begin().await?;
+    move_node_in(db.backend, &mut tx, id, parent).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// [`move_node`] on an explicit connection, so the admin write joins the
+/// pipeline's transaction.
+pub async fn move_node_in(
+    backend: DbBackend,
+    conn: &mut sqlx::AnyConnection,
+    id: i64,
+    parent: Option<i64>,
+) -> CoreResult<()> {
+    // The subtree: every node with `id` among its ancestors, itself included,
+    // with how far beneath `id` each sits.
+    let (sql, values) = {
+        let mut select = Query::select();
+        select
+            .from(Anc::Table)
+            .columns([Anc::NodeId, Anc::Depth])
+            .and_where(Expr::col(Anc::AncestorId).eq(id));
+        build(backend, select)
+    };
+    let rows = bind_values(sqlx::query(&sql), values)
+        .fetch_all(&mut *conn)
+        .await?;
+    let mut subtree = Vec::with_capacity(rows.len());
+    for row in rows {
+        subtree.push((row.get_int("node_id")?, row.get_int("depth")?));
+    }
+    if subtree.is_empty() {
+        return Err(laterite_core::CoreError::NotFound("location".to_string()));
+    }
+    let members: Vec<i64> = subtree.iter().map(|(node, _)| *node).collect();
+    if parent.is_some_and(|p| members.contains(&p)) {
+        return Err(laterite_core::CoreError::Validation(
+            "a location cannot move under itself".to_string(),
+        ));
+    }
+    // Cut the subtree loose: its links to every ancestor outside it.
+    let (sql, values) = {
+        let mut delete = Query::delete();
+        delete
+            .from_table(Anc::Table)
+            .and_where(Expr::col(Anc::NodeId).is_in(members.clone()))
+            .and_where(Expr::col(Anc::AncestorId).is_not_in(members.clone()));
+        build(backend, delete)
+    };
+    bind_values(sqlx::query(&sql), values)
+        .execute(&mut *conn)
+        .await?;
+    // Tie it to the new ancestry: each member to each ancestor of the parent
+    // (the parent itself at depth 0), one deeper than the member sits plus
+    // one more than the ancestor sits above the parent.
+    if let Some(parent) = parent {
+        let above = ancestors_of_in(backend, &mut *conn, parent).await?;
+        let mut links: Vec<(i64, i64, i32)> = Vec::new();
+        for (node, depth) in &subtree {
+            for (ancestor, height) in &above {
+                links.push((*node, *ancestor, (depth + height + 1) as i32));
+            }
+        }
+        if !links.is_empty() {
+            let (sql, values) = {
+                let mut insert = Query::insert();
+                insert
+                    .into_table(Anc::Table)
+                    .columns([Anc::NodeId, Anc::AncestorId, Anc::Depth]);
+                for (node, ancestor, depth) in links {
+                    insert.values_panic([node.into(), ancestor.into(), depth.into()]);
+                }
+                build(backend, insert)
+            };
+            bind_values(sqlx::query(&sql), values)
+                .execute(&mut *conn)
+                .await?;
+        }
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    let (sql, values) = {
+        let mut update = Query::update();
+        update
+            .table(Node::Table)
+            .value(Node::ParentId, parent)
+            .value(Node::UpdatedAt, now)
+            .and_where(Expr::col(Node::Id).eq(id));
+        build(backend, update)
+    };
+    bind_values(sqlx::query(&sql), values)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,6 +407,38 @@ mod tests {
             locale: None,
             centroid: None,
         }
+    }
+
+    #[tokio::test]
+    async fn move_rebuilds_the_closure_of_the_subtree() {
+        let (db, _g) = db().await;
+        let india = create_node(&db, node(None, "country", "India"))
+            .await
+            .unwrap();
+        let karnataka = create_node(&db, node(Some(india), "state", "Karnataka"))
+            .await
+            .unwrap();
+        let bengaluru = create_node(&db, node(Some(karnataka), "city", "Bengaluru"))
+            .await
+            .unwrap();
+        let nepal = create_node(&db, node(None, "country", "Nepal"))
+            .await
+            .unwrap();
+
+        // Karnataka, with Bengaluru beneath it, under Nepal.
+        move_node(&db, karnataka, Some(nepal)).await.unwrap();
+        assert_eq!(
+            ancestors(&db, bengaluru).await.unwrap(),
+            vec![bengaluru, karnataka, nepal]
+        );
+        assert_eq!(ancestors(&db, karnataka).await.unwrap(), vec![karnataka, nepal]);
+        assert_eq!(parent_of(&db, karnataka).await.unwrap(), Some(Some(nepal)));
+
+        // To the top level, and never under its own descendant.
+        move_node(&db, karnataka, None).await.unwrap();
+        assert_eq!(ancestors(&db, bengaluru).await.unwrap(), vec![bengaluru, karnataka]);
+        assert!(move_node(&db, karnataka, Some(bengaluru)).await.is_err());
+        assert_eq!(ancestors(&db, bengaluru).await.unwrap(), vec![bengaluru, karnataka]);
     }
 
     #[tokio::test]

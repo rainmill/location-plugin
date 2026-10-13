@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use std::sync::Arc;
 
-use laterite_admin::persist::{Persister, PersisterReg, SaveError};
+use laterite_admin::persist::{MoveTo, Persister, PersisterReg, SaveError};
 use laterite_core::strata::async_trait;
 use laterite_core::validation::ErrorBag;
 use laterite_core::{t, Record, SaveCx};
@@ -23,7 +23,8 @@ pub(crate) fn persister() -> PersisterReg {
 }
 /// The location node write handler. Create maintains the ancestor closure
 /// atomically (see [`store::create_node`]); update edits a node's fields but
-/// rejects re-parenting, which would require rebuilding the subtree's closure.
+/// rejects re-parenting, which is "Move to" on the list (see
+/// [`store::move_node`]), where the subtree's closure is rebuilt with it.
 pub(crate) struct NodePersister;
 
 #[async_trait]
@@ -68,7 +69,7 @@ impl Persister for NodePersister {
                     let mut bag = ErrorBag::default();
                     bag.add(
                         "parent_id",
-                        t!("Re-parenting a location is not supported here."),
+                        t!("Use Move to on the list to put a location under another parent."),
                     );
                     return Err(SaveError::Invalid(bag));
                 }
@@ -83,6 +84,25 @@ impl Persister for NodePersister {
             locale: opt(data, "locale"),
         };
         store::update_node_in(backend, cx.conn(), node_id, edit)
+            .await
+            .map_err(|e| SaveError::Failed(e.to_string()))
+    }
+
+    async fn move_to(&self, cx: &mut SaveCx<'_>, mv: &MoveTo<'_>) -> Result<(), SaveError> {
+        let node_id: i64 = mv
+            .id
+            .parse()
+            .map_err(|_| SaveError::Failed("invalid node id".to_string()))?;
+        let parent = match mv.parent {
+            Some(parent) => Some(
+                parent
+                    .parse::<i64>()
+                    .map_err(|_| SaveError::Failed("invalid parent id".to_string()))?,
+            ),
+            None => None,
+        };
+        let backend = cx.backend();
+        store::move_node_in(backend, cx.conn(), node_id, parent)
             .await
             .map_err(|e| SaveError::Failed(e.to_string()))
     }
