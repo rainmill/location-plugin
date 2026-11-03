@@ -431,14 +431,23 @@ mod tests {
             ancestors(&db, bengaluru).await.unwrap(),
             vec![bengaluru, karnataka, nepal]
         );
-        assert_eq!(ancestors(&db, karnataka).await.unwrap(), vec![karnataka, nepal]);
+        assert_eq!(
+            ancestors(&db, karnataka).await.unwrap(),
+            vec![karnataka, nepal]
+        );
         assert_eq!(parent_of(&db, karnataka).await.unwrap(), Some(Some(nepal)));
 
         // To the top level, and never under its own descendant.
         move_node(&db, karnataka, None).await.unwrap();
-        assert_eq!(ancestors(&db, bengaluru).await.unwrap(), vec![bengaluru, karnataka]);
+        assert_eq!(
+            ancestors(&db, bengaluru).await.unwrap(),
+            vec![bengaluru, karnataka]
+        );
         assert!(move_node(&db, karnataka, Some(bengaluru)).await.is_err());
-        assert_eq!(ancestors(&db, bengaluru).await.unwrap(), vec![bengaluru, karnataka]);
+        assert_eq!(
+            ancestors(&db, bengaluru).await.unwrap(),
+            vec![bengaluru, karnataka]
+        );
     }
 
     #[tokio::test]

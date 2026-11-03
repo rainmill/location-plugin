@@ -10,11 +10,11 @@
 use std::sync::Arc;
 
 use laterite_admin::form::{FormConfig, FormField};
+use laterite_admin::list::{ListColumn, ListConfig, SortDir, TreeConfig};
 use laterite_admin::nav::Placement;
+use laterite_admin::picker::{PickerSourceReg, TableSource};
 use laterite_admin::relation::RelationConfig;
 use laterite_admin::ImportConfig;
-use laterite_admin::list::{TreeConfig, ListColumn, ListConfig, SortDir};
-use laterite_admin::picker::{PickerSourceReg, TableSource};
 use laterite_admin::{Permission, Resource};
 
 /// The permission gating the location screens, offered in the role editor.
