@@ -1,0 +1,39 @@
+# The Locations screen: the place tree as a list, the create/edit form, and a
+# node's children on its own edit page. The write handler and the picker the
+# file names are registered in Rust (`rainmill.location.node`).
+entity: rainmill_location_node
+path: /locations
+title: Locations
+permission: rainmill.location.manage
+menu: { icon: map-pin }
+palette: rainmill.location.node
+import: true
+list: &list
+  order_by: canonical_name
+  creatable: true
+  tree: { parent_key: parent_id, source: rainmill.location.node }
+  columns:
+    canonical_name: { label: Name, editable: true }
+    level:          {}
+    slug:           {}
+    status:         {}
+    created_at:     { label: Created, type: datetime }
+form: &form
+  title: Location
+  persist: rainmill.location.node
+  fields:
+    canonical_name: { label: Name, rules: [required] }
+    slug:           { rules: [required, unique] }
+    level:          { rules: [required] }
+    parent_id:      { type: reference, label: Parent, source: rainmill.location.node }
+    timezone:       {}
+    currency_code:  { label: Currency }
+    locale:         {}
+relations:
+  children:
+    title: Child locations
+    label: Child location
+    entity: rainmill_location_node
+    foreign_key: parent_id
+    list: *list
+    form: *form
