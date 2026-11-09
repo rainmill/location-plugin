@@ -1,7 +1,7 @@
 [package]
 name = "rainmill-location"
 version = "0.1.0"
-description = "Rainmill Location: a portable curated place tree with aliases and resolution, for Laterite"
+description = "A curated tree of places with alternative names and lookup, for the Laterite framework. Runs on PostgreSQL, MySQL or SQLite"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/rainmill/location-plugin"
