@@ -7,6 +7,10 @@ bump is breaking and a patch is additive.
 
 ## [Unreleased]
 
+### Changed
+
+- Requires Laterite 0.10.
+
 ## [0.1.0] - 2026-11-10
 
 ### Added
