@@ -7,6 +7,8 @@ bump is breaking and a patch is additive.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-10
+
 ### Added
 
 - First release. A curated tree of places with alternative names and lookup, for the Laterite framework. Runs on PostgreSQL, MySQL or SQLite.
