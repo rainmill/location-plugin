@@ -5,28 +5,32 @@ on:
     branches: [main]
   pull_request:
 
-# Formatting and lints. Laterite is unpublished, so it is checked out beside this
-# repo to satisfy the path dependency. The portable database test suite arrives
-# with the first migrations.
+# Builds, lints and tests against the main branch of the framework, patched in
+# over crates.io, so a change there that breaks this plugin shows up here. The
+# release workflow tests against the published crates. The suite runs the
+# portable migrations on SQLite; the application workspace covers PostgreSQL.
 jobs:
-  lint:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: rainmill-location
-      # Adjust the slug if the Laterite repository is named differently.
-      - uses: actions/checkout@v4
-        with:
-          repository: lateritecmf/laterite
-          path: laterite
+      - name: Patch in the main branches
+        run: |
+          git clone --depth 1 https://github.com/lateritecmf/laterite ../laterite
+          mkdir -p .cargo
+          cat > .cargo/config.toml <<'EOF'
+          [patch.crates-io]
+          laterite-core = { path = "../laterite/crates/core" }
+          laterite-admin = { path = "../laterite/crates/admin" }
+          laterite-auth = { path = "../laterite/crates/auth" }
+          laterite-macros = { path = "../laterite/crates/macros" }
+          laterite-media = { path = "../laterite/crates/media" }
+          laterite-web = { path = "../laterite/crates/web" }
+          EOF
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rainmill-location
       - run: cargo fmt --all --check
-        working-directory: rainmill-location
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-        working-directory: rainmill-location
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test

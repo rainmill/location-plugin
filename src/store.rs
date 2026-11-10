@@ -6,6 +6,7 @@
 //! a single statement, after reading the parent's ancestors. Queries and inserts
 //! go through the framework's portable helpers.
 
+use laterite_core::sqlx;
 use laterite_core::strata::*;
 
 use crate::schema::RainmillLocationAlias as Alias;

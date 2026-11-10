@@ -3,6 +3,7 @@
 //! name. The enum name becomes the (vendor-prefixed) table name in snake_case:
 //! `RainmillLocationNode` -> `rainmill_location_node`.
 
+use laterite_core::sea_query;
 use sea_query::Iden;
 
 /// A place node in the tree.
