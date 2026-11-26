@@ -18,7 +18,7 @@ list: &list
   creatable: true
   tree: { parent_key: parent_id, source: rainmill.location.node }
   columns:
-    canonical_name: { label: Name, editable: true }
+    canonical_name: { label: Name }
     level:          {}
     slug:           {}
     status:         {}
@@ -35,6 +35,28 @@ form: &form
     currency_code:  { label: Currency }
     locale:         {}
 relations:
+  aliases:
+    title: Also known as
+    label: Name
+    entity: rainmill_location_alias
+    foreign_key: node_id
+    list:
+      order_by: alias
+      creatable: true
+      deletable: true
+      columns:
+        alias:       { label: Name }
+        lang:        { label: Language }
+        is_official: { label: Official, type: boolean }
+    form:
+      title: Other name
+      fields:
+        alias:
+          label: Name
+          rules: [required]
+          help: Another name people search this place by, such as a former or a local name.
+        lang: { label: Language, help: "A language tag such as en or kn. Leave empty when it is not specific to one." }
+        is_official: { type: switch, label: Official name }
   children:
     title: Child locations
     label: Child location

@@ -47,6 +47,8 @@ pub(crate) enum RainmillLocationAlias {
     Alias,
     Normalized,
     Lang,
+    /// A government name kept as an alias while locals say another.
+    IsOfficial,
     Source,
     CreatedAt,
 }

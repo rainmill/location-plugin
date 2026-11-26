@@ -6,7 +6,8 @@
 pub(crate) mod node;
 mod persist;
 
-pub(crate) use node::{permission, picker_source, resource};
+pub use node::PlaceSource;
+pub(crate) use node::{alias_listener, permission, picker_source, resource};
 pub(crate) use persist::persister;
 
 #[cfg(test)]

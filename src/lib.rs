@@ -13,7 +13,9 @@ pub mod migrations;
 mod schema;
 pub mod store;
 
-use laterite_core::{MigrationSet, Module, ModuleId, Registry};
+use laterite_core::{Capability, MigrationSet, Module, ModuleId, Registry};
+
+pub use admin::PlaceSource;
 
 /// This plugin's entry point. Every Laterite plugin exposes `module()`, so the
 /// generated `plugins-manifest` collects it without naming the type.
@@ -33,11 +35,19 @@ impl Module for LocationModule {
         migrations::migrations()
     }
 
+    /// Name search forgives a misspelling where `pg_trgm` is installed, and
+    /// matches by exact name, prefix and substring where it is not.
+    fn optional_db_capabilities(&self) -> &'static [Capability] {
+        const CAPS: &[Capability] = &[Capability::new("pg_trgm")];
+        CAPS
+    }
+
     fn register(&self, registry: &mut Registry) {
         use laterite_admin::AdminRegistry;
         registry.add_permission(admin::permission());
         registry.add_resource(admin::resource());
         registry.add_persister(admin::persister());
         registry.add_picker_source(admin::picker_source());
+        registry.add(admin::alias_listener());
     }
 }
