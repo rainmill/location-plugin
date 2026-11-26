@@ -5,7 +5,12 @@ entity: rainmill_location_node
 path: /locations
 title: Locations
 permission: rainmill.location.manage
-menu: { icon: map-pin }
+# Places change rarely, so the screen is listed in Settings. An application
+# moves it back with a menu move in its configuration.
+menu:
+  icon: map-pin
+  in_settings: System
+  description: Countries, regions and cities, and the hierarchy records are placed in.
 palette: rainmill.location.node
 import: true
 list: &list

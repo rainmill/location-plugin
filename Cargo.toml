@@ -23,7 +23,7 @@ laterite-core = "0.12"
 # The admin descriptors (list/form screens) the module contributes from its
 # `register`. The place tree is the plugin's headless core; the admin screens are
 # its curation surface, rendered by the framework's generic handlers.
-laterite-admin = "0.12"
+laterite-admin = "0.12.1"
 # Text timestamps (the framework stores times as ISO strings).
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # Alias normalization and slugs: use well-maintained crates, not hand-rolled string

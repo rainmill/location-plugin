@@ -9,7 +9,8 @@ bump is breaking and a patch is additive.
 
 ### Changed
 
-- Requires Laterite 0.10.
+- Locations is listed in Settings under System, with a description. A menu move for `resource:/rainmill/location/locations` puts it back in the menu.
+- Requires Laterite 0.12.1.
 
 ## [0.1.0] - 2026-11-10
 
