@@ -6,6 +6,7 @@ laterite_core::migration_set! {
     m0002_alias_search,
     m0003_create_feature,
     m0004_create_feature_default,
+    m0005_drop_feature_default,
 }
 
 #[cfg(test)]

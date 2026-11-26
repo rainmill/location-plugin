@@ -70,13 +70,9 @@ load after this plugin's.
 ## Features by place
 
 A module declares a feature once, and each place says On, Off or nothing about
-it. A place that says nothing follows its nearest ancestor that does. Where
-none does, the switch set for everywhere applies, and where there is none the
-feature answers for itself: what it works out from data, or its default.
-
-The Location features screen, in Settings, lists every feature with its switch
-for everywhere and the places that differ. Every place's page shows the same
-features with a control each.
+it. A place that says nothing follows its nearest ancestor that does; where
+none does, the feature answers for itself: what it works out from data, or its
+default. Every place's page shows the registered features with a control each.
 
 ```rust
 use rainmill_location::features::{self, LocationFeature, LocationRegistry};
@@ -93,7 +89,6 @@ registry.add_location_feature(Arc::new(Guestlist));
 
 let on = features::enabled(db, &Guestlist, place_id).await?;
 let places = features::enabled_nodes(db, &Guestlist).await?;
-features::set_everywhere(db, &Guestlist, Some(false)).await?;
 ```
 
 | Method | Default | Meaning |
