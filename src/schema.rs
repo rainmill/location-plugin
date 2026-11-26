@@ -63,3 +63,13 @@ pub(crate) enum RainmillLocationFeature {
     Enabled,
     UpdatedAt,
 }
+
+/// A feature's switch for everywhere, where an operator has set one.
+#[derive(Iden)]
+pub(crate) enum RainmillLocationFeatureDefault {
+    Table,
+    /// The feature's dotted key.
+    Feature,
+    Enabled,
+    UpdatedAt,
+}

@@ -4,8 +4,9 @@
 //! says what it does. Each place then says On, Off or nothing about it. A
 //! place that says nothing follows its nearest ancestor that does, so a
 //! feature turned on for a state is on in its cities until one of them turns
-//! it off. Where no place on the way up says anything, the feature's own
-//! answer applies: what it works out from data, or else its default.
+//! it off. Where no place on the way up says anything, the switch an
+//! operator set for everywhere applies; and where there is none, the
+//! feature's own answer: what it works out from data, or else its default.
 //!
 //! ```ignore
 //! struct Guestlist;
@@ -34,6 +35,7 @@ use laterite_core::{t, Registry, Text};
 
 use crate::schema::RainmillLocationAncestor as Anc;
 use crate::schema::RainmillLocationFeature as Feature;
+use crate::schema::RainmillLocationFeatureDefault as FeatureDefault;
 use crate::schema::RainmillLocationNode as Node;
 
 /// A feature that places switch on and off.
@@ -116,6 +118,8 @@ pub enum Source {
     Here,
     /// The nearest ancestor that says anything, by id.
     Inherited(i64),
+    /// The switch an operator set for everywhere.
+    Everywhere,
     /// The feature worked it out from data.
     Computed,
     /// Nothing said anything: the feature's default.
@@ -150,9 +154,103 @@ pub async fn setting(db: &Db, key: &str, node_id: i64) -> CoreResult<Option<bool
     })
 }
 
+/// What an operator set for the feature `key` everywhere: on, off, or nothing.
+pub async fn everywhere(db: &Db, key: &str) -> CoreResult<Option<bool>> {
+    let (sql, values) = {
+        let mut select = Query::select();
+        select
+            .from(FeatureDefault::Table)
+            .column(FeatureDefault::Enabled)
+            .and_where(Expr::col(FeatureDefault::Feature).eq(key))
+            .limit(1);
+        build(db.backend, select)
+    };
+    let row = bind_values(sqlx::query(&sql), values)
+        .fetch_optional(&db.pool)
+        .await?;
+    Ok(match row {
+        Some(row) => Some(row.get_int("enabled")? != 0),
+        None => None,
+    })
+}
+
+/// Switches `feature` on or off everywhere, or with `None` leaves it to the
+/// feature's own answer. A place that says On or Off still goes its own way.
+pub async fn set_everywhere(
+    db: &Db,
+    feature: &dyn LocationFeature,
+    to: Option<bool>,
+) -> CoreResult<()> {
+    let mut tx = db.pool.begin().await?;
+    let (sql, values) = {
+        let mut delete = Query::delete();
+        delete
+            .from_table(FeatureDefault::Table)
+            .and_where(Expr::col(FeatureDefault::Feature).eq(feature.key()));
+        build(db.backend, delete)
+    };
+    bind_values(sqlx::query(&sql), values)
+        .execute(&mut *tx)
+        .await?;
+    if let Some(on) = to {
+        let (sql, values) = {
+            let mut insert = Query::insert();
+            insert
+                .into_table(FeatureDefault::Table)
+                .columns([
+                    FeatureDefault::Feature,
+                    FeatureDefault::Enabled,
+                    FeatureDefault::UpdatedAt,
+                ])
+                .values_panic([
+                    feature.key().into(),
+                    i32::from(on).into(),
+                    chrono::Utc::now().to_rfc3339().into(),
+                ]);
+            build(db.backend, insert)
+        };
+        bind_values(sqlx::query(&sql), values)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+/// The places that say On or Off for the feature `key` themselves, by name.
+pub async fn said(db: &Db, key: &str) -> CoreResult<Vec<(i64, String, bool)>> {
+    let (sql, values) = {
+        let mut select = Query::select();
+        select
+            .from(Feature::Table)
+            .inner_join(
+                Node::Table,
+                Expr::col((Node::Table, Node::Id)).equals((Feature::Table, Feature::NodeId)),
+            )
+            .column((Node::Table, Node::Id))
+            .column((Node::Table, Node::CanonicalName))
+            .column((Feature::Table, Feature::Enabled))
+            .and_where(Expr::col((Feature::Table, Feature::Feature)).eq(key))
+            .order_by((Node::Table, Node::CanonicalName), Order::Asc);
+        build(db.backend, select)
+    };
+    let rows = bind_values(sqlx::query(&sql), values)
+        .fetch_all(&db.pool)
+        .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push((
+            row.get_int("id")?,
+            row.get_text("canonical_name")?,
+            row.get_int("enabled")? != 0,
+        ));
+    }
+    Ok(out)
+}
+
 /// Whether `feature` is on at `node_id`, and where the answer came from: the
-/// nearest place on the way up that says On or Off, else what the feature
-/// works out, else its default.
+/// nearest place on the way up that says On or Off, else the switch set for
+/// everywhere, else what the feature works out, else its default.
 pub async fn decide(db: &Db, feature: &dyn LocationFeature, node_id: i64) -> CoreResult<Decision> {
     let (sql, values) = {
         let mut select = Query::select();
@@ -182,6 +280,12 @@ pub async fn decide(db: &Db, feature: &dyn LocationFeature, node_id: i64) -> Cor
             } else {
                 Source::Inherited(at)
             },
+        });
+    }
+    if let Some(enabled) = everywhere(db, feature.key()).await? {
+        return Ok(Decision {
+            enabled,
+            source: Source::Everywhere,
         });
     }
     if let Some(enabled) = feature.computed(db, node_id).await? {
@@ -249,7 +353,8 @@ pub async fn set(
     Ok(())
 }
 
-/// Every place where `feature` is on by what places say and its default,
+/// Every place where `feature` is on by what places say, the switch for
+/// everywhere and its default,
 /// without asking what it would work out from data.
 pub async fn enabled_nodes(db: &Db, feature: &dyn LocationFeature) -> CoreResult<Vec<i64>> {
     // Each place with its parent, and each place's own switch.
@@ -286,7 +391,10 @@ pub async fn enabled_nodes(db: &Db, feature: &dyn LocationFeature) -> CoreResult
     for row in rows {
         said.insert(row.get_int("node_id")?, row.get_int("enabled")? != 0);
     }
-    let fallback = feature.default_enabled();
+    let fallback = match everywhere(db, feature.key()).await? {
+        Some(on) => on,
+        None => feature.default_enabled(),
+    };
     Ok(ids
         .into_iter()
         .filter(|&id| {
@@ -445,6 +553,25 @@ mod tests {
         set(&db, &Guestlist, mysuru, None).await.unwrap();
         assert!(enabled(&db, &Guestlist, mysuru).await.unwrap());
         assert_eq!(setting(&db, "acme.guestlist", mysuru).await.unwrap(), None);
+
+        // Off everywhere reaches the places nothing is said for, and no further.
+        set_everywhere(&db, &Open, Some(false)).await.unwrap();
+        let decision = decide(&db, &Open, india).await.unwrap();
+        assert_eq!(
+            (decision.enabled, decision.source),
+            (false, Source::Everywhere)
+        );
+        set_everywhere(&db, &Guestlist, Some(false)).await.unwrap();
+        assert!(
+            enabled(&db, &Guestlist, bengaluru).await.unwrap(),
+            "the state says On"
+        );
+        assert_eq!(
+            said(&db, "acme.guestlist").await.unwrap(),
+            vec![(karnataka, "Karnataka".to_string(), true)]
+        );
+        set_everywhere(&db, &Open, None).await.unwrap();
+        assert!(enabled(&db, &Open, india).await.unwrap());
     }
 
     #[tokio::test]
