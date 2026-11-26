@@ -9,6 +9,7 @@
 //! The migrations, query API, admin screens, and node-picker land incrementally.
 
 mod admin;
+pub mod features;
 pub mod migrations;
 mod schema;
 pub mod store;
@@ -43,11 +44,14 @@ impl Module for LocationModule {
     }
 
     fn register(&self, registry: &mut Registry) {
+        use features::LocationRegistry;
         use laterite_admin::AdminRegistry;
         registry.add_permission(admin::permission());
         registry.add_resource(admin::resource());
         registry.add_persister(admin::persister());
         registry.add_picker_source(admin::picker_source());
         registry.add(admin::alias_listener());
+        registry.add_screen(admin::features_screen());
+        registry.add_location_feature(std::sync::Arc::new(features::Open));
     }
 }

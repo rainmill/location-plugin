@@ -52,3 +52,14 @@ pub(crate) enum RainmillLocationAlias {
     Source,
     CreatedAt,
 }
+
+/// A feature's switch at a place: on or off there, whatever its ancestors say.
+#[derive(Iden)]
+pub(crate) enum RainmillLocationFeature {
+    Table,
+    NodeId,
+    /// The feature's dotted key.
+    Feature,
+    Enabled,
+    UpdatedAt,
+}

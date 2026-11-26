@@ -67,6 +67,56 @@ form.field(FieldType::location_ref("home_location_id", "Home city"));
 Your module declares `requires("rainmill.location")` so its migrations and screens
 load after this plugin's.
 
+## Features by place
+
+A module declares a feature once, and each place says On, Off or nothing about
+it. A place that says nothing follows its nearest ancestor that does; where
+none does, the feature answers for itself: what it works out from data, or its
+default. Every place's page shows the registered features with a control each.
+
+```rust
+use rainmill_location::features::{self, LocationFeature, LocationRegistry};
+
+struct Guestlist;
+
+impl LocationFeature for Guestlist {
+    fn key(&self) -> &'static str { "acme.guestlist" }
+    fn label(&self) -> Text { t!("Guestlist") }
+    fn description(&self) -> Text { t!("Guests can ask for a place on the list.") }
+}
+
+registry.add_location_feature(Arc::new(Guestlist));
+
+let on = features::enabled(db, &Guestlist, place_id).await?;
+let places = features::enabled_nodes(db, &Guestlist).await?;
+```
+
+| Method | Default | Meaning |
+| --- | --- | --- |
+| `key`, `label`, `description` | required | The stored key, and the words beside the switch. |
+| `default_enabled` | `false` | The answer where nothing else gives one. |
+| `applies_to(level)` | every level | Whether a place at that level is offered the switch. |
+| `computed(db, node_id)` | none | An answer worked out from data. A place that says On or Off always wins. |
+| `changed(db, node_id, setting)` | nothing | Called after a place's own switch changed. |
+
+`features::Open` is built in: whether the place itself is offered. It is on
+unless a place, or one above it, is switched off.
+
+### Settings of a feature by place
+
+A feature with settings of its own for a place (a fee, a limit) keeps them in a
+table of its own with a `node_id` column, and adds it to the place's page as a
+section:
+
+```rust
+registry.add(ResourceHook::new("/rainmill/location/locations", |resource| {
+    resource.relation(RelationConfig::has_many("fees", "Fee", "acme_guestlist_fee", "node_id", list, form))
+}));
+
+// The place whose row applies: the place itself, else its nearest ancestor with one.
+let from = features::nearest_with_row(db, "acme_guestlist_fee", "node_id", place_id).await?;
+```
+
 ## Status
 
 In active development. The schema and module registration are in place; the query

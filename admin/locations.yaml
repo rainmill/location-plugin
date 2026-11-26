@@ -25,6 +25,8 @@ list: &list
     created_at:     { label: Created, type: datetime }
 form: &form
   title: Location
+  panels:
+    - { title: Features, src: "rainmill/location/features/{id}" }
   persist: rainmill.location.node
   fields:
     canonical_name: { label: Name, rules: [required] }

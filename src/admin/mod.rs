@@ -3,9 +3,11 @@
 //! One module per resource, as `lat make:resource` lays it out, with the code
 //! seams beside them.
 
+mod features;
 pub(crate) mod node;
 mod persist;
 
+pub(crate) use features::screen as features_screen;
 pub use node::PlaceSource;
 pub(crate) use node::{alias_listener, permission, picker_source, resource};
 pub(crate) use persist::persister;

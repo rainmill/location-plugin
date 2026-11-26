@@ -4,6 +4,7 @@ laterite_core::migration_set! {
     module_id: "rainmill.location",
     m0001_create_location,
     m0002_alias_search,
+    m0003_create_feature,
 }
 
 #[cfg(test)]
